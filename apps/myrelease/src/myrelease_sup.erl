@@ -26,18 +26,10 @@ start_link() ->
 %%                  type => worker(),       % optional
 %%                  modules => modules()}   % optional
 init([]) ->
-    {ok,LS} =
-        case gen_tcp:listen(7878,[{active, false},binary]) of
-            {ok, ListenSock} ->
-                {ok, _} = inet:port(ListenSock),
-                {ok,ListenSock};
-            {error,Reason} ->
-                {error,Reason}
-        end,
     SupFlags = #{strategy => one_for_all,
                  intensity => 0,
                  period => 1},
-    ChildSpecs = [#{id => serv,start => {tcpserver,start_link,[srv,LS]},type => worker}],
+    ChildSpecs = [#{id => serv,start => {tcpserver,start_link,[srv,1]},type => worker}],
     {ok, {SupFlags, ChildSpecs}}.
 
 %% internal functions

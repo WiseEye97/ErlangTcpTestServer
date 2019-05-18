@@ -5,7 +5,9 @@
 %% API
 -export([start/1, stop/1, start_link/2,tcpserver/2]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
--record(state, {users = []}).
+-record(player,{name,from,position}).
+-record(game,{player1,player2}).
+-record(state, {users = [],games = []}).
 
 start(Name) ->
    start_link(Name,5).
@@ -16,9 +18,31 @@ stop(Name) ->
 start_link(Name,LS) ->
    gen_server:start_link({local, Name}, ?MODULE, [LS], []).
 
-init(LS) ->
+init(_) ->
+    {ok,LS} =
+        case gen_tcp:listen(7878,[{active, false},binary]) of
+            {ok, ListenSock} ->
+                {ok, _} = inet:port(ListenSock),
+                {ok,ListenSock};
+            {error,Reason} ->
+                {error,Reason}
+        end,
     start_servers(5,LS),
     {ok, #state{users = []}}.
+
+find_user([]) ->
+  no_user;
+find_user([User | Rest]) ->
+  {found , User, Rest}.
+
+init_game({_,{Pid,_}},Side) ->
+  Pid!{from_server,start_game,Side}.
+
+create_game({{Name1,{Pid1,_}},Side1},{{Name2,{Pid2,_}},Side2}) ->
+  P1 = #player{name = Name1,from = Pid1,position = 0},
+  P2 = #player{name = Name2,from = Pid2,position = 1},
+  #game{player1 = P1,player2 = P2}.
+
 
 handle_call(stop, _From, State) ->
    {stop, normal, stopped, State};
@@ -27,9 +51,22 @@ handle_call(Request, From, State) ->
     {Reply,NewState} =
         case Request of
             {message,register,UserName} ->
-                Users = State#state.users,
-                UpdatedUsers = [{UserName,From} | Users],
-                {ok,State#state{users = UpdatedUsers}} 
+
+              Users = State#state.users,
+              NewUser = {UserName,From},
+
+              case find_user(Users) of
+                no_user ->
+                  UpdatedUsers = [NewUser | Users],
+                  {ok,State#state{users = UpdatedUsers}};
+                {found , User,Rest} ->
+                  Games = State#state.games,
+                  init_game(User,up),
+                  init_game(NewUser,down),
+                  NewGame = create_game({User,up},{NewUser,down}),
+                  {ok,State#state{users = Rest,games = [NewGame | Games]}}
+              end
+  
         end,
     {reply, Reply, NewState}.
 
@@ -54,10 +91,12 @@ start_servers(Num,LS) ->
   start_servers(Num-1,LS).
 
 process(Decoded) ->
-    #{<<"type">> := Tp} = Decoded,
+    #{<<"tp">> := Tp,<<"content">> := Ct} = Decoded,
+
     case Tp of
         <<"register">> ->
-            #{<<"name">> := UserName} = Decoded,
+            io:format("Content -> ~p",[Ct]),
+            #{<<"name">> := UserName} = Ct,
             {message,register,UserName}
     end.        
     
