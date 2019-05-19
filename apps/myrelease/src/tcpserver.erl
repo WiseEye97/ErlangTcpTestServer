@@ -109,7 +109,7 @@ loop(S,Nm) ->
   inet:setopts(S,[{active,once}]),
   receive
     {from_server,start_game,Side} ->
-        Resp = jsx:encode(#{<<"tp">> => <<"game_init">>,<<"content">> => #{<<"side">> => atom_to_list(Side)}}),
+        Resp = jsx:encode(#{<<"tp">> => <<"game_init">>,<<"body">> => #{<<"side">> => atom_to_binary(Side,latin1)}}),
         gen_tcp:send(S,Resp),
         loop(S,Nm);
     {tcp,S,Data} ->
