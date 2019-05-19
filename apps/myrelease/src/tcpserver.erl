@@ -5,6 +5,7 @@
 %% API
 -export([start/1, stop/1, start_link/2,tcpserver/2]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
+-record(pos,{side,cord = 50}).
 -record(player,{name,from,position}).
 -record(game,{player1,player2}).
 -record(state, {users = [],games = []}).
@@ -38,9 +39,12 @@ find_user([User | Rest]) ->
 init_game({_,{Pid,_}},Side) ->
   Pid!{from_server,start_game,Side}.
 
+create_position(up) -> #pos{side = up};
+create_position(down) -> #pos{side = down}.
+
 create_game({{Name1,{Pid1,_}},Side1},{{Name2,{Pid2,_}},Side2}) ->
-  P1 = #player{name = Name1,from = Pid1,position = 0},
-  P2 = #player{name = Name2,from = Pid2,position = 1},
+  P1 = #player{name = Name1,from = Pid1,position = create_position(Side1)},
+  P2 = #player{name = Name2,from = Pid2,position = create_position(Side2)},
   #game{player1 = P1,player2 = P2}.
 
 
@@ -104,20 +108,14 @@ process(Decoded) ->
 loop(S,Nm) ->
   inet:setopts(S,[{active,once}]),
   receive
+    {from_server,start_game,Side} ->
+        Resp = jsx:encode(#{<<"tp">> => <<"game_init">>,<<"content">> => #{<<"side">> => atom_to_list(Side)}}),
+        gen_tcp:send(S,Resp),
+        loop(S,Nm);
     {tcp,S,Data} ->
         Decoded = jsx:decode(Data,[return_maps]),
         Answer = process(Decoded),
         gen_server:call(srv,Answer), 
-
-        receive
-            ok -> 
-                3
-        end,
-        
-        io:format("Date -> ~p",[Answer]),
-
-        % Not implemented in this example
-        % gen_tcp:send(S,Answer),
         loop(S,Nm);
     {tcp_closed,S} ->
         io:format("Socket ~w closed [~w]~n",[S,self()]),
